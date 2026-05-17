@@ -778,18 +778,23 @@ function cwListenNewsFeed(attempt){
   db.ref('cleanworld/staffApproved').on('child_added', function(snapshot){
     var data = snapshot.val();
     if(!data || !data.ts) return;
-    // Chỉ xử lý thông báo mới (trong 30 giây)
-    if(Date.now() - data.ts > 30000) return;
-    // Nếu đang ở màn đăng nhập NV → thông báo
-    var loginScreen = document.getElementById('staff-login');
-    if(loginScreen && loginScreen.style.display !== 'none'){
-      showAppToast('✅ Tài khoản ' + (data.name||'') + ' đã được duyệt! Có thể đăng nhập!', '#0F6E56');
-    }
-    // Reload accounts
-    if(data.phone) {
-      db.ref('cleanworld/accounts/' + data.phone).once('value').then(function(snap){
+    // Chỉ xử lý thông báo mới (trong 60 giây)
+    if(Date.now() - data.ts > 60000) return;
+    var approvedPhone = data.phone;
+    // Reload account từ Firebase
+    if(approvedPhone) {
+      db.ref('cleanworld/accounts/' + approvedPhone).once('value').then(function(snap){
         var acc = snap.val();
-        if(acc) slAccounts[data.phone] = acc;
+        if(acc) slAccounts[approvedPhone] = acc;
+        // Nếu đang ở màn đăng nhập NV → thông báo
+        var loginPhoneEl = document.getElementById('sl-phone');
+        var currentPhone = loginPhoneEl ? slNormalizePhone(loginPhoneEl.value) : '';
+        var loginScreen = document.getElementById('role-staff-login');
+        if(loginScreen && loginScreen.style.display !== 'none'){
+          if(!currentPhone || currentPhone === approvedPhone){
+            showAppToast('✅ Tài khoản ' + (data.name||'') + ' đã được duyệt! Nhấn Đăng nhập để vào app!', '#0F6E56');
+          }
+        }
       });
     }
   });
@@ -2642,7 +2647,17 @@ function slDoLogin(){
         showAppToast('❌ Mật khẩu không đúng','#E24B4A'); return;
       }
       if(acc.status === 'pending'){
-        showAppToast('⏳ Tài khoản chờ admin duyệt. Vui lòng chờ!','#854F0B'); return;
+        // Thử fetch lại Firebase lần nữa để chắc chắn
+        db.ref('cleanworld/accounts/'+phone).once('value').then(function(snap2){
+          var acc2 = snap2.val();
+          if(acc2 && acc2.status === 'active'){
+            slAccounts[phone] = acc2;
+            slDoLoginSuccess(acc2);
+          } else {
+            showAppToast('⏳ Tài khoản chờ admin duyệt. Vui lòng chờ!','#854F0B');
+          }
+        }).catch(function(){ showAppToast('⏳ Tài khoản chờ admin duyệt. Vui lòng chờ!','#854F0B'); });
+        return;
       }
       // Cập nhật cache
       slAccounts[phone] = acc;
