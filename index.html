@@ -694,8 +694,10 @@ function newsFeedTap(id){
   showAppToast('📰 '+n.title,'#185FA5');
 }
 
-// Gọi khi trang load
-document.addEventListener('DOMContentLoaded', function(){ renderNewsFeed(); });
+// Gọi khi trang load - hiển thị data mặc định trước
+document.addEventListener('DOMContentLoaded', function(){
+  renderNewsFeed(); // Hiện data cứng trước
+});
 
 
 /* ===== PWA SERVICE WORKER ===== */
@@ -761,14 +763,16 @@ function cwListenNewsFeed(attempt){
     return;
   }
   db.ref('cleanworld/newsFeed').on('value', function(snapshot){
-    var arr = snapshot.val();
-    if(!arr) return;
-    // Firebase trả về object hoặc array
-    if(!Array.isArray(arr)) arr = Object.values(arr);
-    if(!arr.length) return;
+    var data = snapshot.val();
+    if(!data) return;
+    var arr = Array.isArray(data) ? data : Object.values(data);
+    if(!arr || !arr.length) return;
     newsFeed = arr;
-    if(typeof renderNewsFeed === 'function') renderNewsFeed();
-    console.log('📰 Tin tức từ Firebase:', arr.length, 'bài');
+    renderNewsFeed();
+    console.log('📰 Firebase newsFeed updated:', arr.length);
+    // Show toast khi có update từ admin
+    if(window._newsLoaded) showAppToast('📰 Tin tức vừa cập nhật!','#185FA5');
+    window._newsLoaded = true;
   });
   console.log('✅ Firebase newsFeed listener active');
 }
@@ -1133,7 +1137,10 @@ function cwInstallApp(){
           <span style="font-size:18px;font-weight:800;color:var(--text-primary);">📣 Tin tức & Ưu đãi</span>
           <span style="font-size:12px;font-weight:600;color:var(--brand);cursor:pointer;">Xem tất cả</span>
         </div>
-        <div id="news-feed-list"></div>
+        <div id="news-feed-list">
+          <!-- Loading placeholder -->
+          <div style="text-align:center;padding:20px;color:var(--text-tertiary);font-size:12px;">⏳ Đang tải tin tức...</div>
+        </div>
       </div>
       <button class="book-btn" onclick="openBookingOverlay()"><i class="ti ti-plus"></i> Đặt dịch vụ mới</button>
     </div>
