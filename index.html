@@ -774,13 +774,71 @@ function cwListenNewsFeed(attempt){
     if(window._newsLoaded) showAppToast('📰 Tin tức vừa cập nhật!','#185FA5');
     window._newsLoaded = true;
   });
+  // Lắng nghe khi Admin duyệt tài khoản NV
+  db.ref('cleanworld/staffApproved').on('child_added', function(snapshot){
+    var data = snapshot.val();
+    if(!data || !data.ts) return;
+    // Chỉ xử lý thông báo mới (trong 30 giây)
+    if(Date.now() - data.ts > 30000) return;
+    // Nếu đang ở màn đăng nhập NV → thông báo
+    var loginScreen = document.getElementById('staff-login');
+    if(loginScreen && loginScreen.style.display !== 'none'){
+      showAppToast('✅ Tài khoản ' + (data.name||'') + ' đã được duyệt! Có thể đăng nhập!', '#0F6E56');
+    }
+    // Reload accounts
+    if(data.phone) {
+      db.ref('cleanworld/accounts/' + data.phone).once('value').then(function(snap){
+        var acc = snap.val();
+        if(acc) slAccounts[data.phone] = acc;
+      });
+    }
+  });
   console.log('✅ Firebase newsFeed listener active');
 }
 // Gọi ngay sau khi DOM load
 if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', function(){ setTimeout(cwListenNewsFeed, 1500); });
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(cwListenNewsFeed, 1500); setTimeout(cwListenAdminAssigned, 2000); });
 } else {
   setTimeout(cwListenNewsFeed, 1500);
+  setTimeout(cwListenAdminAssigned, 2000);
+}
+
+/* Lắng nghe khi Admin chỉ định NV từ Desktop */
+function cwListenAdminAssigned(attempt){
+  attempt = attempt || 1;
+  if(typeof db === 'undefined'){
+    if(attempt < 10) setTimeout(function(){ cwListenAdminAssigned(attempt+1); }, 1000);
+    return;
+  }
+  var lastTs = Date.now() - 5000; // Chỉ lắng nghe từ 5 giây trước
+  db.ref('cleanworld/adminAssigned').on('child_added', function(snapshot){
+    var data = snapshot.val();
+    if(!data || !data.ts || data.ts < lastTs) return;
+    // Kiểm tra xem NV đang đăng nhập có phải người được chỉ định không
+    if(typeof slCurrentUser === 'undefined' || !slCurrentUser) return;
+    if(data.workerName !== slCurrentUser.name) return;
+    // Tạo order và hiện popup cho NV
+    var newOrder = {
+      id: Date.now(),
+      icon: '📋',
+      svc: data.svc || 'Dịch vụ',
+      cust: 'Khách hàng',
+      time: 'Ngay bây giờ',
+      addr: data.addr || '—',
+      area: data.addr || 'TP.HCM',
+      price: data.price || 0,
+      earn: Math.round((data.price||0) * 0.7),
+      dur: '2 giờ',
+      status: 'new',
+      excludedStaff: [],
+      fromAdmin: true
+    };
+    showAppToast('🏢 Admin đã chỉ định bạn nhận đơn: ' + data.svc, '#185FA5');
+    setTimeout(function(){
+      if(typeof nvShowPopup === 'function') nvShowPopup(newOrder);
+    }, 1000);
+  });
+  console.log('✅ Admin assigned listener active');
 }
 
 /* ===== NÚT CÀI APP (PWA Install) ===== */
@@ -1289,13 +1347,13 @@ function cwInstallApp(){
           <div class="bk-scroll-hdr"><div class="bk-scroll-num">2</div><span>Lịch hẹn & Nhân viên</span></div>
           <div class="bk-sec-title" style="padding-top:4px;">Chọn ngày</div>
           <div class="date-scroll-bk">
-            <div class="date-btn-bk" id="bkd-15" onclick="bkSelDate('15','Hôm nay')"><div class="dbday">Hôm nay</div><div class="dbnum">15</div></div>
-            <div class="date-btn-bk sel-dt" id="bkd-16" onclick="bkSelDate('16','T.Bảy')"><div class="dbday">T.Bảy</div><div class="dbnum">16</div></div>
-            <div class="date-btn-bk" id="bkd-17" onclick="bkSelDate('17','C.Nhật')"><div class="dbday">C.Nhật</div><div class="dbnum">17</div></div>
-            <div class="date-btn-bk" id="bkd-18" onclick="bkSelDate('18','T.Hai')"><div class="dbday">T.Hai</div><div class="dbnum">18</div></div>
-            <div class="date-btn-bk" id="bkd-19" onclick="bkSelDate('19','T.Ba')"><div class="dbday">T.Ba</div><div class="dbnum">19</div></div>
-            <div class="date-btn-bk" id="bkd-20" onclick="bkSelDate('20','T.Tư')"><div class="dbday">T.Tư</div><div class="dbnum">20</div></div>
-            <div class="date-btn-bk" id="bkd-21" onclick="bkSelDate('21','T.Năm')"><div class="dbday">T.Năm</div><div class="dbnum">21</div></div>
+            <div class="date-btn-bk" id="bkd-15" onclick="bkSelDate('15','Hôm nay',6,2026)"><div class="dbday">Hôm nay</div><div class="dbnum">15</div></div>
+            <div class="date-btn-bk sel-dt" id="bkd-16" onclick="bkSelDate('16','T.Bảy',6,2026)"><div class="dbday">T.Bảy</div><div class="dbnum">16</div></div>
+            <div class="date-btn-bk" id="bkd-17" onclick="bkSelDate('17','C.Nhật',5,2026)"><div class="dbday">C.Nhật</div><div class="dbnum">17</div></div>
+            <div class="date-btn-bk" id="bkd-18" onclick="bkSelDate('18','T.Hai',5,2026)"><div class="dbday">T.Hai</div><div class="dbnum">18</div></div>
+            <div class="date-btn-bk" id="bkd-19" onclick="bkSelDate('19','T.Ba',5,2026)"><div class="dbday">T.Ba</div><div class="dbnum">19</div></div>
+            <div class="date-btn-bk" id="bkd-20" onclick="bkSelDate('20','T.Tư',5,2026)"><div class="dbday">T.Tư</div><div class="dbnum">20</div></div>
+            <div class="date-btn-bk" id="bkd-21" onclick="bkSelDate('21','T.Năm',5,2026)"><div class="dbday">T.Năm</div><div class="dbnum">21</div></div>
           </div>
           <!-- Nút mở calendar -->
           <div style="padding:0 12px 4px;">
@@ -1353,7 +1411,7 @@ function cwInstallApp(){
 
           <!-- PANEL: NV YÊU CẦU (lấy từ adminStaffData) -->
           <div id="nv-panel-old" class="bk-section-card">
-            <div style="font-size:10px;color:var(--text-tertiary);padding:2px 14px 8px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Nhân viên đã được duyệt</div>
+            <div style="font-size:10px;color:var(--text-tertiary);padding:8px 14px 8px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;display:flex;justify-content:space-between;align-items:center;"><span>Nhân viên đang hoạt động</span><span id="bk-nv-count" style="background:#E1F5EE;color:#0F6E56;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700;"></span></div>
             <div id="bk-nv-list">
               <!-- Render từ JS: bkRenderWorkerList() -->
               <div style="padding:14px;text-align:center;color:var(--text-tertiary);font-size:12px;">Đang tải danh sách nhân viên...</div>
@@ -2492,6 +2550,29 @@ function slNormalizePhone(raw){
   return p;
 }
 
+// Load accounts từ Firebase khi mở app
+function slLoadAccounts(){
+  if(typeof db === 'undefined') return;
+  db.ref('cleanworld/accounts').once('value').then(function(snapshot){
+    var data = snapshot.val();
+    if(!data) return;
+    Object.keys(data).forEach(function(phone){
+      var acc = data[phone];
+      if(!slAccounts[phone]){
+        slAccounts[phone] = acc;
+      } else {
+        // Cập nhật status nếu admin đã duyệt
+        slAccounts[phone].status = acc.status || slAccounts[phone].status;
+      }
+    });
+    console.log('✅ Accounts loaded:', Object.keys(slAccounts).length);
+  });
+}
+// Gọi sau 2 giây khi Firebase ready
+setTimeout(function(){
+  if(typeof db !== 'undefined') slLoadAccounts();
+}, 2000);
+
 function slDoLogin(){
   var phoneEl=document.getElementById('sl-phone'); var passEl=document.getElementById('sl-pass');
   if(!phoneEl||!phoneEl.value.trim()){ showAppToast('Vui lòng nhập số điện thoại','#E24B4A'); return; }
@@ -2534,21 +2615,34 @@ function slDoRegister(){
   if(slAccounts[phone]){ showAppToast('❌ Số điện thoại đã được đăng ký','#E24B4A'); return; }
   // Lưu tài khoản (trạng thái pending)
   var passHash=slHash(passEl.value.trim());
-  slAccounts[phone]={ hash:passHash, name:nameEl.value.trim(), area:areaEl.value, status:'pending' };
+  var newAcc = { hash:passHash, name:nameEl.value.trim(), area:areaEl.value, status:'pending' };
+  slAccounts[phone] = newAcc;
+  // Lưu accounts lên Firebase để không mất khi reload
+  if(typeof db !== 'undefined'){
+    db.ref('cleanworld/accounts/'+phone).set(newAcc);
+  }
   // Thêm vào bảng admin với đầy đủ thông tin
-  adminStaffData.push({
+  var newStaff = {
     name: nameEl.value.trim(),
     cccd: cccdEl.value.trim(),
     sdt: phone,
+    phone: phone,
     addr: addrEl.value.trim(),
     area: areaEl.value,
-    hours: '—',
+    hours: '08:00 – 17:00',
     status: 'pending',
-    phone: phone
-  });
+    acceptCount: 0,
+    cancelCount: 0,
+    wallet: 0,
+    joinDate: new Date().toLocaleDateString('vi-VN')
+  };
+  adminStaffData.push(newStaff);
+  // Lưu ngay lên Firebase
+  if(typeof db !== 'undefined'){
+    db.ref('cleanworld/staffData').set(adminStaffData);
+  }
+  if(typeof cwSave === 'function') cwSave();
   showAppToast('✅ Đã gửi hồ sơ! Chờ admin duyệt 1–2 ngày','#185FA5');
-  cwSave();
-  if(typeof fbSyncAll==="function") fbSyncAll();
   // Reset form
   nameEl.value=''; phoneEl.value=''; cccdEl.value=''; addrEl.value=''; areaEl.value=''; passEl.value='';
   // Chuyển sang tab đăng nhập
@@ -2840,10 +2934,13 @@ function adminUpdatePendingBadge(){
 function adminApproveStaff(i){
   var r=adminStaffData[i]; if(!r) return;
   r.status='active';
-  if(r.phone && slAccounts[r.phone]){
-    slAccounts[r.phone].status='active';
-  } else if(r.sdt && slAccounts[r.sdt]){
-    slAccounts[r.sdt].status='active';
+  var approvePhone = r.phone || r.sdt;
+  if(approvePhone && slAccounts[approvePhone]){
+    slAccounts[approvePhone].status='active';
+  }
+  // Cập nhật Firebase accounts → NV tự đăng nhập được
+  if(typeof db !== 'undefined' && approvePhone){
+    db.ref('cleanworld/accounts/'+approvePhone+'/status').set('active');
   }
   adminRenderStaff();
   adminUpdatePendingBadge();
@@ -3385,7 +3482,16 @@ var regTimerInt=setInterval(function(){
 
 /* ===== BOOKING JS ===== */
 var bkStep=1;
-var bkDate='16'; var bkDateLbl='T.Bảy';
+// Lấy ngày hiện tại làm mặc định
+var _today = new Date();
+var _todayDay = _today.getDate();
+var _todayMonth = _today.getMonth()+1;
+var _todayYear = _today.getFullYear();
+var _dowNames = ['C.Nhật','T.Hai','T.Ba','T.Tư','T.Năm','T.Sáu','T.Bảy'];
+var bkDate = String(_todayDay);
+var bkDateLbl = _dowNames[_today.getDay()];
+var bkMonth = _todayMonth;
+var bkYear = _todayYear;
 var bkStep=2;
 var bkTime='9'; var bkTimeLbl='09:00';
 var bkWorker='lan';
@@ -3550,18 +3656,46 @@ function bkSelTime(t,lbl){
 /* ===== RENDER DANH SÁCH NV TỪ ADMIN ===== */
 function bkRenderWorkerList(selectedId){
   var container=document.getElementById('bk-nv-list'); if(!container) return;
-  // Lấy NV đã được duyệt từ adminStaffData
-  var staffList=typeof adminStaffData!=='undefined'
-    ? adminStaffData.filter(function(s){return s.status!=='pending';})
-    : [
-        {name:'Nguyễn Thị Lan',sdt:'0901234567',area:'Quận 3, Quận 10',acceptCount:12,cancelCount:1},
-        {name:'Trần Thị Mai',sdt:'0912345678',area:'Quận 5, Quận 6',acceptCount:8,cancelCount:2}
-      ];
+  // Hiện loading
+  container.innerHTML='<div style="padding:14px;text-align:center;color:var(--text-tertiary);font-size:12px;">⏳ Đang tải danh sách...</div>';
+  // Load từ Firebase nếu có
+  if(typeof db !== 'undefined'){
+    db.ref('cleanworld/staffData').once('value').then(function(snapshot){
+      var fbStaff = snapshot.val();
+      if(fbStaff && Array.isArray(fbStaff) && fbStaff.length){
+        // Cập nhật adminStaffData với data mới nhất
+        fbStaff.forEach(function(s){
+          var rec = adminStaffData.find(function(x){return x.name===s.name;});
+          if(rec) Object.assign(rec,s);
+          else adminStaffData.push(s);
+        });
+      }
+      bkDoRenderWorkerList(container, selectedId);
+    }).catch(function(){ bkDoRenderWorkerList(container, selectedId); });
+  } else {
+    bkDoRenderWorkerList(container, selectedId);
+  }
+}
+
+function bkDoRenderWorkerList(container, selectedId){
+  // Lấy NV đã được duyệt
+  // Chỉ lấy NV status='active' - đang hoạt động
+  var staffList = adminStaffData.filter(function(s){
+    return s.status === 'active';
+  });
   if(!staffList.length){
-    container.innerHTML='<div style="padding:14px;text-align:center;color:var(--text-tertiary);font-size:12px;">Chưa có nhân viên nào được duyệt</div>';
+    container.innerHTML='<div style="padding:16px;text-align:center;">'
+      +'<div style="font-size:24px;margin-bottom:8px;">👥</div>'
+      +'<div style="font-size:13px;font-weight:600;color:var(--text-secondary);">Chưa có nhân viên đang hoạt động</div>'
+      +'<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">Admin cần duyệt nhân viên trước</div>'
+    +'</div>';
     return;
   }
   container.innerHTML='';
+  // Cập nhật count badge
+  var countEl=document.getElementById('bk-nv-count');
+  if(countEl) countEl.textContent=staffList.length+' người';
+  
   // Sắp xếp: điểm cao nhất lên đầu
   var sorted=[].concat(staffList).sort(function(a,b){
     return ((b.acceptCount||0)*2-(b.cancelCount||0)*3)-((a.acceptCount||0)*2-(a.cancelCount||0)*3);
@@ -3664,7 +3798,7 @@ function bkUpdateConfirm(){
   var workers={lan:'Nguyễn Thị Lan ⭐ 4.9',mai:'Trần Thị Mai ⭐ 4.8',any:'Nhân viên phù hợp nhất'};
   var addrs={'1':'284 Lý Thường Kiệt, Q.10','2':'12 Nguyễn Trãi, Q.5'};
   var el=document.getElementById('bk-confirm-worker'); if(el) el.textContent=workers[bkWorker]||'';
-  var el2=document.getElementById('bk-confirm-dt'); if(el2) el2.textContent=bkDateLbl+', '+bkDate+'/05 · '+bkTimeLbl;
+  var el2=document.getElementById('bk-confirm-dt'); if(el2) el2.textContent=bkDateLbl+', '+bkDate+'/'+(bkMonth||new Date().getMonth()+1)+' · '+bkTimeLbl;
   var el3=document.getElementById('bk-confirm-addr'); if(el3) el3.textContent=addrs[bkAddr]||'';
   var total=bkCalcTotal();
   var el4=document.getElementById('bk-confirm-total'); if(el4) el4.textContent=bkFmt(total);
@@ -3673,7 +3807,7 @@ function bkUpdateConfirm(){
 function bkFinal(){
   // Cập nhật màn hình thành công
   var timeEl=document.getElementById('bk-success-time');
-  if(timeEl) timeEl.textContent=bkDateLbl+', '+bkDate+'/05 · '+bkTimeLbl;
+  if(timeEl) timeEl.textContent=bkDateLbl+', '+bkDate+'/'+(bkMonth||new Date().getMonth()+1)+' · '+bkTimeLbl;
 
   // Lấy địa chỉ
   var addrs={'1':'284 Lý Thường Kiệt, Q.10','2':'12 Nguyễn Trãi, Q.5'};
@@ -3690,7 +3824,7 @@ function bkFinal(){
 
   // Sinh mã đơn
   var orderId=Date.now();
-  var orderCode='CW-'+bkDate+'05-'+String(orderId).slice(-4);
+  var orderCode='CW-'+bkDate+(bkMonth<10?'0':'')+bkMonth+'-'+String(orderId).slice(-4);
 
   // Cập nhật mã đơn trên màn hình thành công
   var codeEl=document.getElementById('bk-success-code');
@@ -3712,7 +3846,7 @@ function bkFinal(){
     icon: icon,
     svc: bkSvcName||'Dịch vụ vệ sinh',
     cust: 'Nguyễn Văn Minh',
-    time: bkDateLbl+', '+bkDate+'/05 · '+bkTimeLbl,
+    time: bkDateLbl+', '+bkDate+'/'+(bkMonth||new Date().getMonth()+1)+' · '+bkTimeLbl,
     addr: addr,
     area: addr.includes('Q.10')||addr.includes('Q10')?'Quận 10':'Quận 5',
     price: total,
@@ -3745,7 +3879,7 @@ function bkFinal(){
     'Nguyễn Văn Minh','0909123456',
     bkSvcName||'Dịch vụ vệ sinh',
     bkFmt(total),'app',
-    bkDateLbl+' '+bkDate+'/05', bkTimeLbl,
+    bkDateLbl+' '+bkDate+'/'+(bkMonth||new Date().getMonth()+1), bkTimeLbl,
     bkDuration, bkM2, workerName, addr
   );
 

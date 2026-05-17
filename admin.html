@@ -165,7 +165,17 @@
 
     // REPLACE hoàn toàn - không merge
     if (data.staffData && Array.isArray(data.staffData) && data.staffData.length) {
-      staffData = data.staffData; // Thay hẳn, không merge
+      // Merge thông minh: giữ wallet từ desktop, cập nhật từ app
+      data.staffData.forEach(function(s){
+        var existing = staffData.find(function(x){ return x.name===s.name || x.sdt===s.sdt; });
+        if(existing){
+          // Cập nhật từ Firebase nhưng giữ wallet nếu admin đã sửa
+          s.wallet = existing.wallet !== undefined ? existing.wallet : (s.wallet||0);
+          Object.assign(existing, s);
+        } else {
+          staffData.push(s); // NV mới từ app
+        }
+      });
     }
     if (data.profitLog && Array.isArray(data.profitLog) && data.profitLog.length) {
       profitLog = data.profitLog;
@@ -176,7 +186,20 @@
       custData = data.custData; // Thay hẳn
     }
     if (data.ordersData && Array.isArray(data.ordersData) && data.ordersData.length) {
-      ordersData = data.ordersData; // Thay hẳn
+      // Normalize fields từ app
+      ordersData = data.ordersData.map(function(o){
+        return {
+          date: o.date||o.orderDate||'—',
+          svc: o.svc||o.service||o.serviceName||'—',
+          cust: o.cust||o.custName||o.customer||'—',
+          sdt: o.sdt||o.phone||o.custPhone||'—',
+          worker: o.worker||o.workerName||'—',
+          dur: o.dur||o.duration||'—',
+          price: o.price||o.totalPrice||0,
+          payMethod: o.payMethod||'',
+          status: o.status||'new'
+        };
+      });
     }
     if (data.newsFeed && Array.isArray(data.newsFeed)) {
       newsData = data.newsFeed;
@@ -204,6 +227,113 @@
       ts: Date.now()
     });
     showSyncToast('✅ Đã lưu toàn bộ lên Firebase!');
+  };
+
+  // Lắng nghe khi admin chỉ định NV từ desktop → push xuống app
+  window.adminAssignWorker = function(orderIdx, workerName) {
+    if(!ordersData[orderIdx]) return;
+    ordersData[orderIdx].worker = workerName;
+    ordersData[orderIdx].assignedCompany = workerName;
+    ordersData[orderIdx].status = 'confirmed';
+    ordersData[orderIdx].assignedAt = new Date().toLocaleString('vi-VN');
+    // Lưu lên Firebase → app NV tự nhận popup
+    if(typeof db !== 'undefined'){
+      db.ref('cleanworld/ordersData').set(ordersData);
+      // Ghi vào path riêng để app lắng nghe
+      db.ref('cleanworld/adminAssigned').push({
+        orderIdx: orderIdx,
+        workerName: workerName,
+        svc: ordersData[orderIdx].svc,
+        addr: ordersData[orderIdx].addr||'—',
+        price: ordersData[orderIdx].price||0,
+        ts: Date.now()
+      });
+    }
+    renderOrders();
+    showSyncToast('✅ Đã chỉ định ' + workerName + ' → App NV đã nhận thông báo!');
+  };
+
+  // Theo dõi dispatch status realtime
+  var dispatchTimer = null;
+  db.ref('cleanworld/dispatchStatus').on('value', function(snapshot){
+    var data = snapshot.val();
+    var panel = document.getElementById('dispatch-panel');
+    var info = document.getElementById('dispatch-info');
+    var log = document.getElementById('dispatch-log');
+    if(!data || data.status === 'done' || data.status === 'timeout_final'){
+      if(panel) panel.style.display = 'none';
+      if(dispatchTimer) clearInterval(dispatchTimer);
+      return;
+    }
+    if(panel) panel.style.display = 'block';
+    if(info) info.textContent = 'Đơn: ' + data.svc + ' · Đang chờ: ' + data.currentStaff + ' (Lần ' + data.attempt + '/' + data.maxAttempts + ')';
+    // Đếm ngược
+    if(dispatchTimer) clearInterval(dispatchTimer);
+    var endTime = (data.startTime||Date.now()) + (data.timeout||300000);
+    dispatchTimer = setInterval(function(){
+      var remaining = Math.max(0, endTime - Date.now());
+      var mins = Math.floor(remaining/60000);
+      var secs = Math.floor((remaining%60000)/1000);
+      var cd = document.getElementById('dispatch-countdown');
+      if(cd) cd.textContent = mins + ':' + String(secs).padStart(2,'0');
+      if(remaining <= 0) clearInterval(dispatchTimer);
+    }, 1000);
+    // Log
+    if(log) log.innerHTML = '<div>⏱ ' + new Date(data.ts).toLocaleTimeString('vi-VN') + ' — Gửi cho <strong>' + data.currentStaff + '</strong></div>';
+  });
+
+  // Lắng nghe đơn chờ Admin chỉ định
+  db.ref('cleanworld/pendingOrders').on('value', function(snapshot){
+    var panel = document.getElementById('pending-assign-panel');
+    var list = document.getElementById('pending-orders-list');
+    if(!snapshot.val()){ if(panel) panel.style.display='none'; return; }
+    var orders = [];
+    snapshot.forEach(function(child){ orders.push(Object.assign({_key:child.key}, child.val())); });
+    var waiting = orders.filter(function(o){ return o.status==='waiting_admin'; });
+    if(!waiting.length){ if(panel) panel.style.display='none'; return; }
+    if(panel) panel.style.display = 'block';
+    if(list) list.innerHTML = waiting.map(function(o){
+      return '<div style="background:#fff;border-radius:8px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">'
+        +'<div style="flex:1;">'
+          +'<div style="font-size:13px;font-weight:700;">'+o.svc+'</div>'
+          +'<div style="font-size:11px;color:#64748b;margin-top:2px;">📍 '+o.addr+' · '+o.attempts+' NV đã từ chối</div>'
+          +'<div style="font-size:10px;color:#ef4444;margin-top:2px;">Đã loại: '+(o.excludedStaff||[]).join(', ')+'</div>'
+        +'</div>'
+        +'<select onchange="if(this.value)adminAssignFromPending(''+o._key+'',this.value,'+JSON.stringify(o)+')" style="border:2px solid #ef4444;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;color:#991b1b;cursor:pointer;font-family:inherit;">'
+          +'<option value="">🏢 Admin chỉ định</option>'
+          + staffData.filter(function(s){return s.status!=='pending'&&(o.excludedStaff||[]).indexOf(s.name)<0;}).map(function(s){
+            return '<option value="'+s.name+'">'+s.name+'</option>';
+          }).join('')
+        +'</select>'
+      +'</div>';
+    }).join('');
+    // Badge trên sidebar
+    var badge = document.getElementById('sb-order-badge');
+    if(badge){ badge.style.display='block'; badge.textContent=waiting.length; }
+  });
+
+  // Hàm Admin chỉ định từ panel pending
+  window.adminAssignFromPending = function(key, workerName, order){
+    // Xóa khỏi pending
+    db.ref('cleanworld/pendingOrders/'+key).remove();
+    // Tạo order và gửi cho NV
+    db.ref('cleanworld/adminAssigned').push({
+      workerName: workerName,
+      svc: order.svc,
+      addr: order.addr,
+      price: order.price||0,
+      cust: order.cust||'Khách hàng',
+      time: order.time||'Ngay bây giờ',
+      fromAdmin: true,
+      ts: Date.now()
+    });
+    // Cập nhật ordersData
+    var existing = ordersData.find(function(o){ return o.svc===order.svc; });
+    if(existing){ existing.worker=workerName; existing.status='confirmed'; }
+    db.ref('cleanworld/ordersData').set(ordersData);
+    db.ref('cleanworld/dispatchStatus').update({status:'done'});
+    renderOrders();
+    showSyncToast('✅ Đã chỉ định ' + workerName + ' → App NV đã nhận thông báo!');
   };
 
   console.log('✅ Desktop Firebase connected!');
@@ -347,6 +477,37 @@
 
     <!-- ===== ĐƠN HÀNG ===== -->
     <div id="sec-orders" class="section">
+      <!-- PANEL THEO DÕI DISPATCH REALTIME -->
+      <div id="dispatch-panel" style="display:none;background:linear-gradient(135deg,#fff7ed,#fef3c7);border:2px solid #f59e0b;border-radius:12px;padding:16px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <span style="font-size:20px;">🚨</span>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#92400e;">Đang điều phối đơn hàng</div>
+            <div style="font-size:12px;color:#b45309;" id="dispatch-info">Đang tìm nhân viên...</div>
+          </div>
+          <div style="margin-left:auto;text-align:right;">
+            <div style="font-size:11px;color:#92400e;font-weight:600;">Còn lại</div>
+            <div style="font-size:22px;font-weight:800;color:#dc2626;" id="dispatch-countdown">5:00</div>
+          </div>
+        </div>
+        <div style="background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;margin-bottom:6px;">Lịch sử điều phối</div>
+          <div id="dispatch-log" style="font-size:12px;color:#374151;line-height:2;"></div>
+        </div>
+      </div>
+
+      <!-- PANEL CHỜ ADMIN CHỈ ĐỊNH -->
+      <div id="pending-assign-panel" style="display:none;background:#fee2e2;border:2px solid #ef4444;border-radius:12px;padding:16px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <span style="font-size:20px;animation:pulse 1s infinite;">🔴</span>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#991b1b;">Cần Admin chỉ định nhân viên!</div>
+            <div style="font-size:12px;color:#b91c1c;">2 NV đã từ chối/không phản hồi — Admin cần xử lý ngay</div>
+          </div>
+        </div>
+        <div id="pending-orders-list"></div>
+      </div>
+
       <div class="table-card">
         <div class="table-header">
           <div class="table-title">Quản lý đơn hàng <span style="font-size:11px;font-weight:500;color:var(--text-2);" id="order-count"></span></div>
@@ -356,7 +517,7 @@
           </div>
         </div>
         <table>
-          <thead><tr><th>#</th><th>Ngày</th><th>Dịch vụ</th><th>Khách hàng</th><th>SĐT</th><th>Nhân viên</th><th>Giờ làm</th><th>Giá trị</th><th>NV nhận</th><th>Công ty</th><th>Thanh toán</th><th>Trạng thái</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Ngày</th><th>Dịch vụ</th><th>Khách hàng</th><th>SĐT</th><th>Nhân viên</th><th>Giờ làm</th><th>Giá trị</th><th>NV nhận</th><th>Công ty</th><th>Thanh toán</th><th>Trạng thái</th><th style="background:#fff3cd;color:#856404;white-space:nowrap;">🏢 CT Chỉ định</th><th></th></tr></thead>
           <tbody id="orders-tbody"></tbody>
         </table>
       </div>
@@ -620,8 +781,8 @@ function renderDashboard(){
     var nv=Math.round(o.price*0.7); var ct=o.price-nv;
     return `<tr>
       <td style="color:var(--text-3);font-weight:700;">${i+1}</td>
-      <td><strong>${o.svc}</strong></td>
-      <td>${o.cust}</td>
+      <td><strong>${o.svc||o.service||'—'}</strong></td>
+      <td>${o.cust||o.custName||'—'}</td>
       <td>${o.worker||'—'}</td>
       <td style="font-weight:700;color:var(--brand-dark);">${fmt(o.price)}</td>
       <td>${payLabel[o.payMethod]||'—'}</td>
@@ -639,19 +800,33 @@ function renderOrders(filter=''){
   document.getElementById('order-count').textContent='— '+data.length+' đơn';
   document.getElementById('orders-tbody').innerHTML=data.map((o,i)=>{
     var nv=Math.round(o.price*0.7); var ct=o.price-nv;
+    var svcName = o.svc||o.service||o.serviceName||'—';
+    var custPhone = o.sdt||o.phone||o.custPhone||'—';
+    var custName = o.cust||o.custName||o.customer||'—';
+    var workerName = o.worker||o.workerName||o.staffName||'—';
+    var orderDate = o.date||o.orderDate||'—';
+    var orderPrice = o.price||o.totalPrice||o.amount||0;
     return `<tr>
       <td style="color:var(--text-3);font-weight:700;">${i+1}</td>
-      <td style="color:var(--text-2);">${o.date}</td>
-      <td><strong>${o.svc}</strong></td>
-      <td>${o.cust}</td>
-      <td style="color:var(--text-2);">${o.sdt}</td>
-      <td>${o.worker||'—'}</td>
-      <td style="color:var(--text-2);">${o.dur||'—'}</td>
-      <td style="font-weight:700;color:var(--brand-dark);">${fmt(o.price)}</td>
+      <td style="color:var(--text-2);">${orderDate}</td>
+      <td><strong>${svcName}</strong></td>
+      <td>${custName}</td>
+      <td style="color:var(--text-2);">${custPhone}</td>
+      <td>${workerName}</td>
+      <td style="color:var(--text-2);">${o.dur||o.duration||'—'}</td>
+      <td style="font-weight:700;color:var(--brand-dark);">${fmt(orderPrice)}</td>
       <td style="color:#0F6E56;font-weight:600;">${fmt(nv)}</td>
       <td style="color:#EF9F27;font-weight:600;">${fmt(ct)}</td>
       <td>${payLabel[o.payMethod]||'—'}</td>
       <td>${statusLabel[o.status]||o.status}</td>
+      <td style="background:#fffbeb;">
+        <select onchange="if(this.value && typeof adminAssignWorker==='function'){adminAssignWorker(${i},this.value)}else{ordersData[${i}].assignedCompany='';renderOrders();}" 
+          style="border:1px solid #fcd34d;border-radius:6px;padding:4px 6px;font-size:11px;font-family:inherit;background:#fffbeb;min-width:130px;cursor:pointer;">
+          <option value="">-- Chọn NV --</option>
+          ${staffData.filter(s=>s.status!=='pending').map(s=>`<option value="${s.name}" ${o.assignedCompany===s.name?'selected':''}>${s.name}</option>`).join('')}
+        </select>
+        ${o.assignedCompany?`<div style="font-size:9px;color:#92400e;margin-top:2px;font-weight:600;">✓ Đã chỉ định</div>`:''}
+      </td>
       <td><button style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;" onclick="deleteOrder(${i})"><i class="ti ti-trash"></i></button></td>
     </tr>`;
   }).join('');
@@ -712,7 +887,7 @@ function renderStaff(filter=''){
           </div>
         </div>
       </td>
-      <td>${statusLabel[r.status]||r.status}</td>
+      <td>${statusLabel[r.status||'active']||(r.status||'Hoạt động')}</td>
       <td>
         ${r.status==='pending'?`<button class="btn btn-primary" style="padding:4px 10px;font-size:11px;" onclick="approveStaff(${idx})"><i class="ti ti-check"></i> Duyệt</button>`:''}
         <button style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;margin-left:4px;" onclick="deleteStaff(${idx})"><i class="ti ti-trash"></i></button>
@@ -721,7 +896,28 @@ function renderStaff(filter=''){
   }).join('');
 }
 function filterStaff(v){ renderStaff(v.toLowerCase()); }
-function approveStaff(i){ staffData[i].status='active'; renderStaff(); checkBadges(); alert('✅ Đã duyệt: '+staffData[i].name); }
+function approveStaff(i){
+  staffData[i].status='active';
+  var phone = staffData[i].sdt || staffData[i].phone;
+  var name = staffData[i].name;
+  if(typeof db !== 'undefined'){
+    // 1. Cập nhật staffData
+    db.ref('cleanworld/staffData').set(staffData);
+    // 2. Cập nhật accounts để NV đăng nhập được
+    if(phone){
+      db.ref('cleanworld/accounts/' + phone + '/status').set('active');
+      db.ref('cleanworld/accounts/' + phone + '/name').set(name);
+    }
+    // 3. Thông báo cho app biết có NV mới được duyệt
+    db.ref('cleanworld/staffApproved').push({
+      name: name,
+      phone: phone,
+      ts: Date.now()
+    });
+    showSyncToast('✅ Đã duyệt ' + name + ' · NV có thể đăng nhập ngay!');
+  }
+  renderStaff(); checkBadges();
+}
 function deleteStaff(i){ if(!confirm('Xóa nhân viên này?')) return; staffData.splice(i,1); renderStaff(); }
 function topupStaffWallet(name,amount){
   var s=staffData.find(x=>x.name===name); if(!s) return;
