@@ -879,6 +879,7 @@ function cwInstallApp(){
 
   firebase.initializeApp(firebaseConfig);
   var db = firebase.database();
+  window.db = db; // Expose globally
 
   // ===== LƯU DỮ LIỆU LÊN FIREBASE =====
   window.fbSyncAll = function() {
@@ -2646,7 +2647,8 @@ function slDoLogin(){
       // Cập nhật cache
       slAccounts[phone] = acc;
       slDoLoginSuccess(acc);
-    }).catch(function(){
+    }).catch(function(e2){
+      console.log('Firebase login error:',e2);
       // Firebase lỗi - dùng cache cục bộ
       var acc = slAccounts[phone];
       if(!acc){ showAppToast('❌ Không kết nối được. Thử lại!','#E24B4A'); return; }
@@ -2685,8 +2687,9 @@ function slDoRegister(){
   var newAcc = { hash:passHash, name:nameEl.value.trim(), area:areaEl.value, status:'pending' };
   slAccounts[phone] = newAcc;
   // Lưu accounts lên Firebase để không mất khi reload
-  if(typeof db !== 'undefined'){
-    db.ref('cleanworld/accounts/'+phone).set(newAcc);
+  var _db = window.db || (typeof db!=='undefined'?db:null);
+  if(_db){
+    _db.ref('cleanworld/accounts/'+phone).set(newAcc);
   }
   // Thêm vào bảng admin với đầy đủ thông tin
   var newStaff = {
@@ -2705,8 +2708,8 @@ function slDoRegister(){
   };
   adminStaffData.push(newStaff);
   // Lưu ngay lên Firebase
-  if(typeof db !== 'undefined'){
-    db.ref('cleanworld/staffData').set(adminStaffData);
+  if(_db){
+    _db.ref('cleanworld/staffData').set(adminStaffData);
   }
   if(typeof cwSave === 'function') cwSave();
   showAppToast('✅ Đã gửi hồ sơ! Chờ admin duyệt 1–2 ngày','#185FA5');
