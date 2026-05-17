@@ -156,6 +156,7 @@
 
   firebase.initializeApp(firebaseConfig);
   var db = firebase.database();
+  window.db = db; // Expose globally
 
   // Lắng nghe realtime từ Firebase - THAY THẾ hoàn toàn data cục bộ
   var _firstLoad = true;
@@ -900,16 +901,17 @@ function approveStaff(i){
   staffData[i].status='active';
   var phone = staffData[i].sdt || staffData[i].phone;
   var name = staffData[i].name;
-  if(typeof db !== 'undefined'){
+  var _db = window.db || (typeof db!=='undefined'?db:null);
+  if(_db){
     // 1. Cập nhật staffData
-    db.ref('cleanworld/staffData').set(staffData);
+    _db.ref('cleanworld/staffData').set(staffData);
     // 2. Cập nhật accounts để NV đăng nhập được
     if(phone){
-      db.ref('cleanworld/accounts/' + phone + '/status').set('active');
-      db.ref('cleanworld/accounts/' + phone + '/name').set(name);
+      _db.ref('cleanworld/accounts/' + phone + '/status').set('active');
+      _db.ref('cleanworld/accounts/' + phone + '/name').set(name);
     }
     // 3. Thông báo cho app biết có NV mới được duyệt
-    db.ref('cleanworld/staffApproved').push({
+    _db.ref('cleanworld/staffApproved').push({
       name: name,
       phone: phone,
       ts: Date.now()
@@ -922,8 +924,11 @@ function deleteStaff(i){ if(!confirm('Xóa nhân viên này?')) return; staffDat
 function topupStaffWallet(name,amount){
   var s=staffData.find(x=>x.name===name); if(!s) return;
   s.wallet=(s.wallet||0)+amount;
-  renderStaff(); renderDashboard(); checkBadges(); cwSave();
-  alert('✅ Đã nạp '+fmt(amount)+' vào ví '+name);
+  // Lưu lên Firebase
+  var _db2 = window.db || (typeof db!=='undefined'?db:null);
+  if(_db2) _db2.ref('cleanworld/staffData').set(staffData);
+  renderStaff(); renderDashboard(); checkBadges();
+  showSyncToast('✅ Đã nạp '+fmt(amount)+' vào ví '+name);
 }
 
 /* ========== CUSTOMERS ========== */
