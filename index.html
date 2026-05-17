@@ -736,8 +736,8 @@ function cwLoadRemoteConfig(){
         }
       });
     }
-    // Cập nhật tin tức
-    if(cfg.newsFeed && typeof newsFeed !== 'undefined'){
+    // Cập nhật tin tức từ Firebase
+    if(cfg.newsFeed && Array.isArray(cfg.newsFeed)){
       newsFeed = cfg.newsFeed;
       renderNewsFeed();
     }
@@ -751,7 +751,19 @@ function cwLoadRemoteConfig(){
 }
 
 // Gọi sau khi Firebase ready
-setTimeout(function(){ cwLoadRemoteConfig(); }, 3000);
+setTimeout(function(){ cwLoadRemoteConfig(); }, 2000);
+
+// Lắng nghe riêng newsFeed realtime từ admin
+setTimeout(function(){
+  if(typeof db === 'undefined') return;
+  db.ref('cleanworld/newsFeed').on('value', function(snapshot){
+    var arr = snapshot.val();
+    if(!arr || !Array.isArray(arr)) return;
+    newsFeed = arr;
+    if(typeof renderNewsFeed === 'function') renderNewsFeed();
+    console.log('📰 Tin tức cập nhật từ Firebase:', arr.length, 'bài');
+  });
+}, 2500);
 
 /* ===== NÚT CÀI APP (PWA Install) ===== */
 var deferredPrompt;
