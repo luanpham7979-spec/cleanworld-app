@@ -2064,6 +2064,7 @@ function cwInstallApp(){
           </div>
         </div>
 
+        <button onclick="slDebugLogin()" style="width:100%;background:#64748b;color:#fff;border:none;border-radius:8px;padding:8px;font-size:11px;font-weight:600;cursor:pointer;margin-bottom:8px;">🔍 Kiểm tra tài khoản Firebase</button>
         <button onclick="slDoLogin()" style="width:100%;background:var(--staff);color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
           <i class="ti ti-login"></i> Đăng nhập
         </button>
@@ -2572,6 +2573,36 @@ function slLoadAccounts(){
 setTimeout(function(){
   if(typeof db !== 'undefined') slLoadAccounts();
 }, 2000);
+
+function slDebugLogin(){
+  var phoneEl=document.getElementById('sl-phone');
+  var phone = phoneEl ? slNormalizePhone(phoneEl.value) : '';
+  if(!phone){ showAppToast('Nhập SĐT trước','#E24B4A'); return; }
+  
+  if(typeof db === 'undefined'){
+    showAppToast('❌ Firebase chưa kết nối!','#E24B4A'); return;
+  }
+  
+  showAppToast('🔍 Đang kiểm tra Firebase...','#185FA5');
+  
+  db.ref('cleanworld/accounts/'+phone).once('value').then(function(snap){
+    var acc = snap.val();
+    if(!acc){
+      showAppToast('❌ SĐT '+phone+' KHÔNG có trong Firebase/accounts','#E24B4A');
+      // Thử tìm trong staffData
+      db.ref('cleanworld/staffData').once('value').then(function(s2){
+        var arr = s2.val()||[];
+        var found = arr.find(function(s){return s.sdt===phone||s.phone===phone;});
+        if(found) showAppToast('📋 Tìm thấy trong staffData: status='+found.status,'#854F0B');
+        else showAppToast('📋 Không tìm thấy trong staffData','#854F0B');
+      });
+    } else {
+      showAppToast('✅ Firebase: '+phone+' | status='+acc.status+' | hash='+(acc.hash?'có':'KHÔNG'),'#0F6E56');
+    }
+  }).catch(function(e){
+    showAppToast('❌ Lỗi Firebase: '+e.message,'#E24B4A');
+  });
+}
 
 function slDoLoginSuccess(acc){
   slLoggedIn=true; slCurrentUser=acc;
