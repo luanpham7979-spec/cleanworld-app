@@ -753,17 +753,31 @@ function cwLoadRemoteConfig(){
 // Gọi sau khi Firebase ready
 setTimeout(function(){ cwLoadRemoteConfig(); }, 2000);
 
-// Lắng nghe riêng newsFeed realtime từ admin
-setTimeout(function(){
-  if(typeof db === 'undefined') return;
+// Lắng nghe newsFeed realtime từ admin - retry nếu Firebase chưa sẵn sàng
+function cwListenNewsFeed(attempt){
+  attempt = attempt || 1;
+  if(typeof db === 'undefined' || typeof firebase === 'undefined'){
+    if(attempt < 10) setTimeout(function(){ cwListenNewsFeed(attempt+1); }, 1000);
+    return;
+  }
   db.ref('cleanworld/newsFeed').on('value', function(snapshot){
     var arr = snapshot.val();
-    if(!arr || !Array.isArray(arr)) return;
+    if(!arr) return;
+    // Firebase trả về object hoặc array
+    if(!Array.isArray(arr)) arr = Object.values(arr);
+    if(!arr.length) return;
     newsFeed = arr;
     if(typeof renderNewsFeed === 'function') renderNewsFeed();
-    console.log('📰 Tin tức cập nhật từ Firebase:', arr.length, 'bài');
+    console.log('📰 Tin tức từ Firebase:', arr.length, 'bài');
   });
-}, 2500);
+  console.log('✅ Firebase newsFeed listener active');
+}
+// Gọi ngay sau khi DOM load
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(cwListenNewsFeed, 1500); });
+} else {
+  setTimeout(cwListenNewsFeed, 1500);
+}
 
 /* ===== NÚT CÀI APP (PWA Install) ===== */
 var deferredPrompt;
