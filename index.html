@@ -697,6 +697,85 @@ function newsFeedTap(id){
 // Gọi khi trang load
 document.addEventListener('DOMContentLoaded', function(){ renderNewsFeed(); });
 
+
+/* ===== PWA SERVICE WORKER ===== */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('/sw.js')
+      .then(function(reg){
+        console.log('SW registered');
+        // Kiểm tra update
+        reg.addEventListener('updatefound', function(){
+          var newWorker = reg.installing;
+          newWorker.addEventListener('statechange', function(){
+            if(newWorker.state==='installed' && navigator.serviceWorker.controller){
+              showAppToast('🆕 Có phiên bản mới! Tải lại để cập nhật','#185FA5');
+            }
+          });
+        });
+      }).catch(function(e){ console.log('SW error:', e); });
+  });
+}
+
+/* ===== FIREBASE REMOTE CONFIG (đồng bộ dữ liệu động) ===== */
+function cwLoadRemoteConfig(){
+  if(typeof db === 'undefined') return;
+  // Lắng nghe cấu hình từ admin realtime
+  db.ref('cleanworld/config').on('value', function(snapshot){
+    var cfg = snapshot.val();
+    if(!cfg) return;
+    // Cập nhật giá dịch vụ
+    if(cfg.services && typeof adminServices !== 'undefined'){
+      cfg.services.forEach(function(s){
+        var local = adminServices.find(function(x){return x.id===s.id;});
+        if(local){
+          local.basePrice = s.basePrice || local.basePrice;
+          local.promo = s.promo !== undefined ? s.promo : local.promo;
+          local.promoLabel = s.promoLabel || local.promoLabel;
+          local.active = s.active !== undefined ? s.active : local.active;
+        }
+      });
+    }
+    // Cập nhật tin tức
+    if(cfg.newsFeed && typeof newsFeed !== 'undefined'){
+      newsFeed = cfg.newsFeed;
+      renderNewsFeed();
+    }
+    // Cập nhật banner/ưu đãi
+    if(cfg.promoText){
+      var promoEl = document.querySelector('.promo-text');
+      if(promoEl) promoEl.textContent = cfg.promoText;
+    }
+    console.log('Remote config loaded');
+  });
+}
+
+// Gọi sau khi Firebase ready
+setTimeout(function(){ cwLoadRemoteConfig(); }, 3000);
+
+/* ===== NÚT CÀI APP (PWA Install) ===== */
+var deferredPrompt;
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  deferredPrompt = e;
+  // Hiện banner cài app
+  var banner = document.getElementById('pwa-install-banner');
+  if(banner) banner.style.display = 'flex';
+});
+
+function cwInstallApp(){
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(function(result){
+    if(result.outcome==='accepted'){
+      showAppToast('✅ Đã cài Clean World về máy!','#0F6E56');
+    }
+    deferredPrompt = null;
+    var banner = document.getElementById('pwa-install-banner');
+    if(banner) banner.style.display = 'none';
+  });
+}
+
 </script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
@@ -771,8 +850,24 @@ document.addEventListener('DOMContentLoaded', function(){ renderNewsFeed(); });
   console.log('✅ Firebase CleanWorld connected!');
 </script>
 
+
+<!-- PWA Manifest -->
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#00C07F"/>
 </head>
 <body>
+
+<!-- PWA Install Banner -->
+<div id="pwa-install-banner" style="display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);width:calc(100% - 32px);max-width:400px;background:#1a1a2e;border-radius:14px;padding:12px 16px;z-index:300;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+  <div style="width:40px;height:40px;background:#00C07F;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">✨</div>
+  <div style="flex:1;">
+    <div style="font-size:13px;font-weight:700;color:#fff;">Cài Clean World về máy</div>
+    <div style="font-size:11px;color:#94a3b8;margin-top:1px;">Dùng như app thật, không cần App Store</div>
+  </div>
+  <button onclick="cwInstallApp()" style="background:#00C07F;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;">Cài ngay</button>
+  <button onclick="document.getElementById('pwa-install-banner').style.display='none'" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px;flex-shrink:0;">✕</button>
+</div>
+
 <div class="app-wrapper">
 <div class="app">
 

@@ -445,6 +445,7 @@
       <div class="table-card">
         <div class="table-header">
           <div class="table-title">Quản lý Tin tức & Sự kiện</div>
+          <button class="btn btn-ghost" onclick="pushAllNewsToApp()" style="gap:5px;"><i class="ti ti-rocket"></i> Đẩy tất cả lên app</button>
           <button class="btn btn-primary" onclick="addNews()"><i class="ti ti-plus"></i> Thêm bài</button>
         </div>
         <div style="padding:16px;" id="news-admin-list"></div>
@@ -968,10 +969,11 @@ function renderNewsAdmin(){
         +'</div>'
         +'<input value="'+n.title+'" onchange="newsData['+i+'].title=this.value" style="width:100%;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 10px;font-size:14px;font-weight:700;font-family:inherit;outline:none;margin-bottom:8px;display:block;" placeholder="Tiêu đề bài viết..."/>'
         +'<textarea onchange="newsData['+i+'].desc=this.value" rows="2" style="width:100%;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 10px;font-size:12px;font-family:inherit;outline:none;resize:none;display:block;margin-bottom:10px;">'+n.desc+'</textarea>'
-        +'<div style="display:flex;gap:8px;">'
+        +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
           +'<button onclick="toggleNews('+i+')" class="btn '+(n.active?'btn-ghost btn-red':'btn-primary')+'" style="padding:5px 12px;font-size:11px;">'+(n.active?'Ẩn':'Hiện')+'</button>'
-          +'<button onclick="saveNewsToApp()" class="btn btn-primary" style="padding:5px 12px;font-size:11px;background:#0F6E56;"><i class="ti ti-device-floppy"></i> Lưu & Đẩy lên app</button>'
-          +'<button onclick="newsData.splice('+i+',1);renderNewsAdmin()" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:16px;"><i class="ti ti-trash"></i></button>'
+          +'<button onclick="saveNewsToApp('+i+')" class="btn btn-primary" style="padding:5px 12px;font-size:11px;background:#0F6E56;"><i class="ti ti-device-floppy"></i> Lưu & Đẩy lên app</button>'
+          +(n.onApp?'<span style="background:#dcfce7;color:#166534;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;background:#16a34a;border-radius:50%;display:inline-block;animation:pulse 1.5s infinite;"></span> Đang trên app</span>':'<span style="background:#f1f5f9;color:#94a3b8;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;">Chưa đẩy lên app</span>')
+          +'<button onclick="newsData.splice('+i+',1);renderNewsAdmin()" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:16px;margin-left:auto;"><i class="ti ti-trash"></i></button>'
         +'</div>'
       +'</div>'
     +'</div>';
@@ -985,14 +987,31 @@ function addNews(){
   renderNewsAdmin();
 }
 
-function saveNewsToApp(){
+function saveNewsToApp(idx){
+  // Đánh dấu bài đã được đẩy lên app
+  if(idx !== undefined) {
+    newsData[idx].onApp = true;
+    newsData[idx].pushedAt = new Date().toLocaleString('vi-VN');
+  } else {
+    newsData.forEach(function(n){ if(n.active) n.onApp=true; });
+  }
   // Lưu lên Firebase để app hiển thị
   if(typeof db !== 'undefined'){
     db.ref('cleanworld/newsFeed').set(newsData.filter(function(n){return n.active;}));
-    showSyncToast('✅ Đã đẩy tin tức lên app!');
+    showSyncToast('✅ Đã đẩy lên app! Khách hàng thấy ngay!');
   } else {
     showSyncToast('✅ Đã lưu! Deploy lại Netlify để cập nhật app');
   }
+  renderNewsAdmin();
+}
+
+function pushAllNewsToApp(){
+  newsData.forEach(function(n){ if(n.active) n.onApp=true; });
+  if(typeof db !== 'undefined'){
+    db.ref('cleanworld/newsFeed').set(newsData.filter(function(n){return n.active;}));
+    showSyncToast('✅ Đã đẩy tất cả tin tức lên app!');
+  }
+  renderNewsAdmin();
 }
 
 </script>
