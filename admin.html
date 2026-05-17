@@ -157,51 +157,53 @@
   firebase.initializeApp(firebaseConfig);
   var db = firebase.database();
 
-  // Lắng nghe realtime từ app
+  // Lắng nghe realtime từ Firebase - THAY THẾ hoàn toàn data cục bộ
+  var _firstLoad = true;
   db.ref('cleanworld').on('value', function(snapshot) {
     var data = snapshot.val();
     if (!data) return;
 
-    // Cập nhật nhân viên
-    if (data.staffData && Array.isArray(data.staffData)) {
-      data.staffData.forEach(function(s) {
-        var rec = staffData.find(function(x){ return x.name === s.name; });
-        if (rec) { rec.wallet = s.wallet !== undefined ? s.wallet : rec.wallet; rec.status = s.status || rec.status; }
-        else staffData.push(s);
-      });
+    // REPLACE hoàn toàn - không merge
+    if (data.staffData && Array.isArray(data.staffData) && data.staffData.length) {
+      staffData = data.staffData; // Thay hẳn, không merge
     }
-    // Cập nhật profit log
     if (data.profitLog && Array.isArray(data.profitLog) && data.profitLog.length) {
       profitLog = data.profitLog;
       var badge = document.getElementById('sb-profit-badge');
       if (badge) { badge.style.display = 'block'; badge.textContent = profitLog.length; }
     }
-    // Cập nhật khách hàng mới
-    if (data.custData && Array.isArray(data.custData)) {
-      data.custData.forEach(function(c) {
-        var exists = custData.find(function(x){ return x.phone === c.phone; });
-        if (!exists) custData.unshift(c);
-      });
+    if (data.custData && Array.isArray(data.custData) && data.custData.length) {
+      custData = data.custData; // Thay hẳn
     }
-    // Cập nhật đơn hàng
-    if (data.ordersData && Array.isArray(data.ordersData)) {
-      data.ordersData.forEach(function(o) {
-        var exists = ordersData.find(function(x){ return x.date===o.date && x.cust===o.cust && x.svc===o.svc; });
-        if (!exists) ordersData.unshift(o);
-      });
+    if (data.ordersData && Array.isArray(data.ordersData) && data.ordersData.length) {
+      ordersData = data.ordersData; // Thay hẳn
+    }
+    if (data.newsFeed && Array.isArray(data.newsFeed)) {
+      newsData = data.newsFeed;
     }
 
     // Re-render tab đang active
     var active = document.querySelector('.section.active');
     if (active) renderSection(active.id.replace('sec-',''));
-    showSyncToast('🔥 Cập nhật realtime từ Firebase!');
+    checkBadges();
+    
+    if (_firstLoad) {
+      showSyncToast('✅ Đã tải dữ liệu từ Firebase!');
+      _firstLoad = false;
+    } else {
+      showSyncToast('🔥 Cập nhật realtime từ Firebase!');
+    }
   });
 
   // Lưu thay đổi từ desktop lên Firebase
   window.fbDesktopSave = function() {
-    db.ref('cleanworld/staffData').set(staffData);
-    db.ref('cleanworld/custData').set(custData);
-    showSyncToast('✅ Đã lưu lên Firebase!');
+    db.ref('cleanworld').update({
+      staffData: staffData,
+      custData: custData,
+      ordersData: ordersData,
+      ts: Date.now()
+    });
+    showSyncToast('✅ Đã lưu toàn bộ lên Firebase!');
   };
 
   console.log('✅ Desktop Firebase connected!');
