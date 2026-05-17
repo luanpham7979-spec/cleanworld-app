@@ -2684,12 +2684,12 @@ function slDoRegister(){
   if(slAccounts[phone]){ showAppToast('❌ Số điện thoại đã được đăng ký','#E24B4A'); return; }
   // Lưu tài khoản (trạng thái pending)
   var passHash=slHash(passEl.value.trim());
-  var newAcc = { hash:passHash, name:nameEl.value.trim(), area:areaEl.value, status:'pending' };
+  var newAcc = { hash:passHash, name:nameEl.value.trim(), area:areaEl.value, status:'pending', registeredAt: new Date().toISOString(), phone:phone };
   slAccounts[phone] = newAcc;
   // Lưu accounts lên Firebase để không mất khi reload
-  var _db = window.db || (typeof db!=='undefined'?db:null);
-  if(_db){
-    _db.ref('cleanworld/accounts/'+phone).set(newAcc);
+  // Dùng fbSaveAccount (cùng scope Firebase)
+  if(typeof window.fbSaveAccount === 'function'){
+    window.fbSaveAccount(phone, newAcc);
   }
   // Thêm vào bảng admin với đầy đủ thông tin
   var newStaff = {

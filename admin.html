@@ -907,8 +907,7 @@ function approveStaff(i){
     _db.ref('cleanworld/staffData').set(staffData);
     // 2. Cập nhật accounts để NV đăng nhập được
     if(phone){
-      _db.ref('cleanworld/accounts/' + phone + '/status').set('active');
-      _db.ref('cleanworld/accounts/' + phone + '/name').set(name);
+      _db.ref('cleanworld/accounts/' + phone).update({status:'active', name:name, approvedAt: new Date().toISOString()});
     }
     // 3. Thông báo cho app biết có NV mới được duyệt
     _db.ref('cleanworld/staffApproved').push({
