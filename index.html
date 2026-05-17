@@ -2933,7 +2933,7 @@ function adminRenderStaff(){
       ? '<span style="font-size:9px;background:#E24B4A;color:#fff;border-radius:10px;padding:3px 8px;font-weight:800;display:block;margin-bottom:4px;animation:tabPulse 1.2s ease-in-out infinite;text-align:center;">⏳ CHỜ DUYỆT</span>'
       : '<span style="font-size:9px;background:#E1F5EE;color:#0F6E56;border-radius:10px;padding:2px 7px;font-weight:700;display:block;margin-bottom:3px;">✅ Hoạt động</span>';
     var approveBtn=isPending
-      ? '<button onclick="adminApproveStaff('+i+')" style="background:#E24B4A;border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:800;padding:6px 10px;cursor:pointer;margin-bottom:3px;display:block;width:100%;box-shadow:0 2px 8px rgba(226,75,74,0.4);">✓ Duyệt ngay</button>'
+      ? '<div style="font-size:10px;background:#FFF0F0;color:#E24B4A;border-radius:8px;padding:5px 8px;font-weight:700;text-align:center;margin-bottom:3px;">⏳ Chờ duyệt trên Desktop</div>'
       : '';
     // Tính đánh giá
     var ac=r.acceptCount||0, cc=r.cancelCount||0;

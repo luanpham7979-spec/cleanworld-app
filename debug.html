@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head><meta charset="UTF-8"/><title>Firebase Debug</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body style="font-family:sans-serif;padding:20px;max-width:600px;margin:0 auto;">
+<h2>🔍 Firebase Debug Tool</h2>
+
+<div style="margin-bottom:16px;">
+  <input id="phone" placeholder="Nhập SĐT NV (vd: 0321125452)" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;box-sizing:border-box;"/>
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:16px;">
+  <button onclick="checkPhone()" style="flex:1;padding:10px;background:#185FA5;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">🔍 Kiểm tra SĐT</button>
+  <button onclick="forceApprove()" style="flex:1;padding:10px;background:#00C07F;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">✅ Force Duyệt</button>
+  <button onclick="showAll()" style="flex:1;padding:10px;background:#854F0B;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">📋 Xem tất cả</button>
+</div>
+
+<div id="out" style="background:#f0f0f0;padding:14px;border-radius:8px;font-family:monospace;font-size:12px;white-space:pre-wrap;min-height:100px;"></div>
+
+<script>
+var cfg = {
+  apiKey:"AIzaSyDQAdE-z_-g2sj62LYgVIDYSCaSof5onW4",
+  authDomain:"cleanworld-d9df5.firebaseapp.com",
+  databaseURL:"https://cleanworld-d9df5-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+firebase.initializeApp(cfg);
+var db = firebase.database();
+var out = document.getElementById('out');
+
+function log(s){ out.textContent += s + '\n'; }
+function clear(){ out.textContent = ''; }
+
+function checkPhone(){
+  clear();
+  var phone = document.getElementById('phone').value.trim();
+  if(!phone){ log('❌ Nhập SĐT trước'); return; }
+  log('📱 Kiểm tra: ' + phone);
+  
+  db.ref('cleanworld/accounts/'+phone).once('value').then(function(s){
+    var d = s.val();
+    if(!d){ log('❌ KHÔNG tìm thấy trong accounts!'); }
+    else {
+      log('✅ Tìm thấy trong accounts:');
+      log('  name: ' + d.name);
+      log('  status: ' + d.status);
+      log('  hash: ' + (d.hash ? '✅ Có' : '❌ KHÔNG CÓ - lỗi!'));
+      log('  registeredAt: ' + (d.registeredAt||'không có'));
+    }
+  });
+  
+  db.ref('cleanworld/staffData').once('value').then(function(s){
+    var arr = s.val()||[];
+    var found = arr.find(function(x){ return x.sdt===phone||x.phone===phone; });
+    if(found) log('\n📋 Trong staffData: status=' + found.status + ' name=' + found.name);
+    else log('\n❌ Không tìm thấy trong staffData');
+  });
+}
+
+function forceApprove(){
+  var phone = document.getElementById('phone').value.trim();
+  if(!phone){ log('❌ Nhập SĐT trước'); return; }
+  clear();
+  log('⏳ Force duyệt: ' + phone);
+  
+  // Update accounts
+  db.ref('cleanworld/accounts/'+phone+'/status').set('active').then(function(){
+    log('✅ accounts/status → active');
+  });
+  
+  // Update staffData
+  db.ref('cleanworld/staffData').once('value').then(function(s){
+    var arr = s.val()||[];
+    var changed = false;
+    arr.forEach(function(x){
+      if(x.sdt===phone||x.phone===phone){ x.status='active'; changed=true; }
+    });
+    if(changed){
+      db.ref('cleanworld/staffData').set(arr).then(function(){
+        log('✅ staffData/status → active');
+        log('\n🎉 Xong! NV có thể đăng nhập ngay!');
+      });
+    } else {
+      log('⚠️ Không tìm thấy trong staffData - chỉ update accounts');
+      log('\n🎉 Xong! Thử đăng nhập lại!');
+    }
+  });
+}
+
+function showAll(){
+  clear();
+  log('=== TẤT CẢ ACCOUNTS ===');
+  db.ref('cleanworld/accounts').once('value').then(function(s){
+    var d = s.val();
+    if(!d){ log('❌ Không có accounts nào!'); return; }
+    Object.keys(d).forEach(function(p){
+      var a = d[p];
+      log(p + ' | ' + a.name + ' | ' + a.status + ' | hash:' + (a.hash?'✅':'❌'));
+    });
+  });
+}
+
+window.onload = function(){ log('Firebase connected! Nhập SĐT để kiểm tra.'); };
+</script>
+</body>
+</html>
