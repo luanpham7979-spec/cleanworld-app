@@ -2687,10 +2687,20 @@ function slDoRegister(){
   var newAcc = { hash:passHash, name:nameEl.value.trim(), area:areaEl.value, status:'pending', registeredAt: new Date().toISOString(), phone:phone };
   slAccounts[phone] = newAcc;
   // Lưu accounts lên Firebase để không mất khi reload
-  // Dùng fbSaveAccount (cùng scope Firebase)
-  if(typeof window.fbSaveAccount === 'function'){
-    window.fbSaveAccount(phone, newAcc);
+  // Lưu account lên Firebase với retry
+  function doSaveAccount(attempt){
+    attempt = attempt||1;
+    if(typeof window.fbSaveAccount === 'function'){
+      window.fbSaveAccount(phone, newAcc);
+      console.log('✅ Account saved to Firebase:', phone);
+    } else if(attempt < 10){
+      // Firebase chưa ready - thử lại sau 500ms
+      setTimeout(function(){ doSaveAccount(attempt+1); }, 500);
+    } else {
+      console.error('❌ Firebase not ready after 5s - cannot save account');
+    }
   }
+  doSaveAccount();
   // Thêm vào bảng admin với đầy đủ thông tin
   var newStaff = {
     name: nameEl.value.trim(),

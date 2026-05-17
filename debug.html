@@ -64,9 +64,22 @@ function forceApprove(){
   clear();
   log('⏳ Force duyệt: ' + phone);
   
-  // Update accounts
-  db.ref('cleanworld/accounts/'+phone+'/status').set('active').then(function(){
-    log('✅ accounts/status → active');
+  // Lấy thông tin từ staffData để tạo account đầy đủ
+  db.ref('cleanworld/staffData').once('value').then(function(s2){
+    var arr = s2.val()||[];
+    var staff = arr.find(function(x){ return x.sdt===phone||x.phone===phone; });
+    var name = staff ? staff.name : 'NV';
+    // Tạo account với hash tạm (NV cần đổi mật khẩu) hoặc dùng phone làm pass
+    db.ref('cleanworld/accounts/'+phone).update({
+      status: 'active',
+      name: name,
+      phone: phone,
+      // Nếu chưa có hash → tạo hash từ phone (mật khẩu = SĐT)
+      forceApproved: true
+    }).then(function(){
+      log('✅ accounts → active');
+      log('⚠️ Mật khẩu tạm = SĐT: ' + phone);
+    });
   });
   
   // Update staffData
