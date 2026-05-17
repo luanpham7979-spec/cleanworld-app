@@ -2573,19 +2573,8 @@ setTimeout(function(){
   if(typeof db !== 'undefined') slLoadAccounts();
 }, 2000);
 
-function slDoLogin(){
-  var phoneEl=document.getElementById('sl-phone'); var passEl=document.getElementById('sl-pass');
-  if(!phoneEl||!phoneEl.value.trim()){ showAppToast('Vui lòng nhập số điện thoại','#E24B4A'); return; }
-  if(!passEl||!passEl.value.trim()){ showAppToast('Vui lòng nhập mật khẩu','#E24B4A'); return; }
-  var phone = slNormalizePhone(phoneEl.value);
-  var passHash=slHash(passEl.value.trim());
-  var acc=slAccounts[phone];
-  if(!acc){ showAppToast('❌ SĐT: '+phone+' chưa đăng ký','#E24B4A'); return; }
-  if(acc.status==='pending'){ showAppToast('⏳ Tài khoản đang chờ admin duyệt','#854F0B'); return; }
-  if(acc.hash!==passHash){ showAppToast('❌ Mật khẩu không đúng','#E24B4A'); return; }
-  slLoggedIn=true;
-  slCurrentUser=acc;
-  // Cập nhật header nhân viên
+function slDoLoginSuccess(acc){
+  slLoggedIn=true; slCurrentUser=acc;
   var greet=document.getElementById('hdr-greeting');
   var firstName=acc.name.split(' ').pop();
   if(greet) greet.textContent='Ví của '+firstName+' 👷';
@@ -2595,6 +2584,53 @@ function slDoLogin(){
     var staffEl=document.getElementById('role-staff'); if(staffEl) staffEl.style.display='block';
     switchSTab('orders');
   }, 600);
+}
+
+function slDoLogin(){
+  var phoneEl=document.getElementById('sl-phone'); var passEl=document.getElementById('sl-pass');
+  if(!phoneEl||!phoneEl.value.trim()){ showAppToast('Vui lòng nhập số điện thoại','#E24B4A'); return; }
+  if(!passEl||!passEl.value.trim()){ showAppToast('Vui lòng nhập mật khẩu','#E24B4A'); return; }
+  var phone = slNormalizePhone(phoneEl.value);
+  var passHash = slHash(passEl.value.trim());
+
+  showAppToast('⏳ Đang kiểm tra...','#185FA5');
+
+  // LUÔN kiểm tra Firebase trước - không dùng cache cục bộ
+  if(typeof db !== 'undefined'){
+    db.ref('cleanworld/accounts/'+phone).once('value').then(function(snapshot){
+      var acc = snapshot.val();
+      if(!acc){
+        // Thử tìm trong slAccounts (tài khoản mặc định)
+        acc = slAccounts[phone];
+      }
+      if(!acc){
+        showAppToast('❌ Số điện thoại chưa đăng ký','#E24B4A'); return;
+      }
+      if(acc.hash !== passHash){
+        showAppToast('❌ Mật khẩu không đúng','#E24B4A'); return;
+      }
+      if(acc.status === 'pending'){
+        showAppToast('⏳ Tài khoản chờ admin duyệt. Vui lòng chờ!','#854F0B'); return;
+      }
+      // Cập nhật cache
+      slAccounts[phone] = acc;
+      slDoLoginSuccess(acc);
+    }).catch(function(){
+      // Firebase lỗi - dùng cache cục bộ
+      var acc = slAccounts[phone];
+      if(!acc){ showAppToast('❌ Không kết nối được. Thử lại!','#E24B4A'); return; }
+      if(acc.hash!==passHash){ showAppToast('❌ Mật khẩu không đúng','#E24B4A'); return; }
+      if(acc.status==='pending'){ showAppToast('⏳ Chờ admin duyệt','#854F0B'); return; }
+      slDoLoginSuccess(acc);
+    });
+  } else {
+    // Không có Firebase - dùng slAccounts
+    var acc = slAccounts[phone];
+    if(!acc){ showAppToast('❌ Chưa đăng ký','#E24B4A'); return; }
+    if(acc.hash!==passHash){ showAppToast('❌ Mật khẩu không đúng','#E24B4A'); return; }
+    if(acc.status==='pending'){ showAppToast('⏳ Chờ admin duyệt','#854F0B'); return; }
+    slDoLoginSuccess(acc);
+  }
 }
 
 function slDoRegister(){
